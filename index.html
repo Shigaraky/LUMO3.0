@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>LUMO</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0f766e">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div id="auth-screen" class="screen active">
+        <div class="auth-container">
+            <h1 style="color:var(--primary); font-weight:800; letter-spacing:-1px; font-size:3rem;">LUMO</h1>
+            <p style="margin-bottom:20px; opacity:0.7">Finanza Personale</p>
+            <div id="pin-display" class="pin-dots"></div>
+            <div class="numpad">
+                <button onclick="Auth.addPin(1)">1</button><button onclick="Auth.addPin(2)">2</button><button onclick="Auth.addPin(3)">3</button>
+                <button onclick="Auth.addPin(4)">4</button><button onclick="Auth.addPin(5)">5</button><button onclick="Auth.addPin(6)">6</button>
+                <button onclick="Auth.addPin(7)">7</button><button onclick="Auth.addPin(8)">8</button><button onclick="Auth.addPin(9)">9</button>
+                <button class="text-btn" onclick="Auth.clearPin()">C</button><button onclick="Auth.addPin(0)">0</button><button class="text-btn" onclick="Auth.checkPin()">OK</button>
+            </div>
+            <p id="auth-msg" class="error-msg"></p>
+        </div>
+    </div>
+
+    <div id="app-screen" class="screen">
+        <header class="top-bar">
+            <h2 id="page-title">Dashboard</h2>
+            <div class="header-actions">
+                 <button onclick="UI.modalSettings()" title="Impostazioni" class="icon-btn">⚙️</button>
+            </div>
+        </header>
+
+        <main id="main-content"></main>
+
+        <button id="fab-add" class="fab">+</button>
+
+        <nav class="bottom-nav">
+            <button class="nav-item active" onclick="Router.navigate('dashboard')">
+                <span class="icon">📊</span><span class="label">Home</span>
+            </button>
+            <button class="nav-item" onclick="Router.navigate('transactions')">
+                <span class="icon">🧾</span><span class="label">Lista</span>
+            </button>
+            <button class="nav-item" onclick="Router.navigate('recurring')">
+                <span class="icon">🔄</span><span class="label">Fisse</span>
+            </button>
+            <button class="nav-item" onclick="Router.navigate('accounts')">
+                <span class="icon">💳</span><span class="label">Conti</span>
+            </button>
+        </nav>
+    </div>
+
+    <div id="modal-overlay" class="modal-overlay hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">Titolo</h3>
+                <button class="close-btn" onclick="UI.closeModal()">✕</button>
+            </div>
+            <div id="modal-body"></div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+    <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');</script>
+</body>
+</html>
