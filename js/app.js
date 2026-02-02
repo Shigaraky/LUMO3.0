@@ -160,6 +160,7 @@ const Store = {
         this.data.recurring.forEach(r => {
             if (!r.active) return;
             let safety = 0;
+            // Genera SOLO se la data è oggi o passata
             while (r.nextDate <= today && safety < 12) {
                 const tx = {
                     id: Utils.genId(), type: r.type, amount: r.amount,
@@ -195,7 +196,6 @@ const UI = {
         const total = Store.data.accounts.reduce((s,a) => s + a.balance, 0);
         const stats = this.calcStats();
         
-        // Genera la lista dei singoli conti
         let accountsBreakdown = '';
         Store.data.accounts.forEach(a => {
             accountsBreakdown += `
@@ -210,7 +210,6 @@ const UI = {
                 </div>
             `;
         });
-        // Rimuove l'ultimo bordo
         accountsBreakdown = accountsBreakdown.replace(/border-bottom:1px solid var\(--border\)"(?!.*border-bottom)/, 'border:none"');
 
         document.getElementById('main-content').innerHTML = `
@@ -218,27 +217,22 @@ const UI = {
                 <p style="opacity:0.8; font-size:0.9rem; text-transform:uppercase; letter-spacing:1px;">Patrimonio Netto</p>
                 <h2>${Utils.fmtMoney(total)}</h2>
             </div>
-
             <div class="card" style="padding-top:10px; padding-bottom:10px; margin-bottom:16px;">
                 ${accountsBreakdown}
             </div>
-
             <div class="summary-grid">
                 <div class="card"><p>Entrate</p><span class="amount pos" style="font-size:1.3rem">+${Utils.fmtMoney(stats.inc)}</span></div>
                 <div class="card"><p>Uscite</p><span class="amount neg" style="font-size:1.3rem; color:var(--danger)">-${Utils.fmtMoney(stats.exp)}</span></div>
             </div>
-            
             <div class="card">
                 <h3 style="margin-bottom:15px">Spese Mensili</h3>
                 <div style="position:relative; height:220px;"><canvas id="chart"></canvas></div>
             </div>
-            
             <div class="card">
                 <h3>Recenti</h3>
                 <div id="mini-list"></div>
             </div>
         `;
-        
         this.drawList(Store.data.transactions.slice().sort((a,b)=>new Date(b.date)-new Date(a.date)).slice(0,5), 'mini-list');
         this.drawChart(stats.cats);
     },
@@ -263,10 +257,10 @@ const UI = {
         if (!list.length) { el.innerHTML = '<div style="text-align:center; padding:30px; color:var(--text-muted)">Nessun dato</div>'; return; }
         el.innerHTML = list.map(t => `
             <div class="list-item" onclick="UI.modalTx('${t.id}')">
-                <div style="display:flex; align-items:center;">
+                <div style="display:flex; align-items:center; flex:1; overflow:hidden;">
                     <div class="icon-box">${t.type==='expense'?'📉':(t.type==='transfer'?'↔️':'📈')}</div>
-                    <div>
-                        <div style="font-weight:600">${t.desc}</div>
+                    <div style="overflow:hidden; white-space:nowrap; text-overflow:ellipsis; margin-right:10px;">
+                        <div style="font-weight:600; overflow:hidden; text-overflow:ellipsis;">${t.desc}</div>
                         <div style="font-size:0.8rem; color:var(--text-muted)">${Utils.fmtDate(t.date)} • ${t.category}</div>
                     </div>
                 </div>
@@ -294,19 +288,40 @@ const UI = {
         document.getElementById('main-content').innerHTML = h;
     },
 
+    /* -- NUOVA FUNZIONE SPESE FISSE -- */
     drawRecurring() {
-        let h = `<div class="card" style="text-align:center; padding:30px;">
-            <h3>Spese Fisse</h3>
-            <p style="font-size:0.9rem; color:var(--text-muted); margin-bottom:15px">Gestisci abbonamenti e stipendi</p>
-            <button class="btn-primary" onclick="UI.modalRecurring()">＋ Nuova Fissa</button>
+        // Calcolo totale mensile
+        const totalMonthly = Store.data.recurring.reduce((sum, r) => {
+            if(!r.active || r.type !== 'expense') return sum;
+            // Se frequenza > 1 mese, spalmiamo il costo (opzionale, ma qui sommo il valore nominale per semplicità)
+            // Se preferisci il costo "reale" mensile: sum + (r.amount / r.freq)
+            return sum + r.amount;
+        }, 0);
+
+        let h = `<div class="card" style="text-align:center; padding:25px;">
+            <p style="text-transform:uppercase; font-size:0.8rem; letter-spacing:1px; margin-bottom:5px; opacity:0.8">Totale Uscite Fisse Attive</p>
+            <h2 style="color:var(--danger); font-size:2.2rem; margin:0">${Utils.fmtMoney(totalMonthly)}</h2>
+            <button class="btn-primary" onclick="UI.modalRecurring()" style="margin-top:15px; width:auto; padding:10px 20px; font-size:0.9rem;">＋ Nuova</button>
         </div>`;
+
         if(Store.data.recurring.length) {
             h += `<div class="card">`;
-            Store.data.recurring.forEach(r => {
-                h += `<div class="list-item" onclick="UI.modalRecurring('${r.id}')">
-                    <div>
-                        <div style="font-weight:600">${r.desc}</div>
-                        <div style="font-size:0.8rem; color:var(--text-muted)">Ogni ${r.freq} mesi • Prox: ${Utils.fmtDate(r.nextDate)}</div>
+            const sorted = [...Store.data.recurring].sort((a,b) => new Date(a.nextDate) - new Date(b.nextDate));
+            
+            sorted.forEach(r => {
+                // Logica colore: Se la prossima data è nel futuro (es. mese prossimo), 
+                // significa che questo mese è già stato pagato/generato.
+                const isPaid = new Date(r.nextDate) > new Date();
+                const itemClass = isPaid ? 'list-item item-green-bg' : 'list-item';
+                const statusBadge = isPaid 
+                    ? `<span class="status-badge status-paid">✓ Addebitata</span>` 
+                    : `<span class="status-badge status-pending">⏳ In attesa: ${Utils.fmtDate(r.nextDate)}</span>`;
+
+                h += `<div class="${itemClass}" onclick="UI.modalRecurring('${r.id}')">
+                    <div style="flex:1">
+                        <div style="font-weight:600; font-size:1.05rem">${r.desc}</div>
+                        <div style="font-size:0.85rem; color:var(--text-muted); margin-top:2px;">Ogni ${r.freq} mesi</div>
+                        ${statusBadge}
                     </div>
                     <div class="amount ${r.type==='expense'?'neg':'pos'}">${Utils.fmtMoney(r.amount)}</div>
                 </div>`;
@@ -342,7 +357,7 @@ const UI = {
                 <button class="btn-primary" style="background:#475569; margin-bottom:10px" onclick="DataMgr.exportData()">📤 Backup Dati</button>
                 <button class="btn-primary" style="background:#475569" onclick="DataMgr.importData()">📥 Ripristina Backup</button>
                 <input type="file" id="import-file" style="display:none" onchange="DataMgr.handleFile(this)">
-                <p style="font-size:0.8rem; color:var(--text-muted); margin-top:15px; text-align:center;">LUMO v3.2</p>
+                <p style="font-size:0.8rem; color:var(--text-muted); margin-top:15px; text-align:center;">LUMO v3.3</p>
             </div>
         `;
         this.openModal('Impostazioni', h);
@@ -359,7 +374,6 @@ const UI = {
             <input type="text" id="new-cat" placeholder="Nuova categoria...">
             <button class="btn-primary" style="width:auto; margin:0;" onclick="UI.addCat()">+</button>
         </div><div class="cat-list">`;
-        
         Store.data.categories.forEach(c => {
             h += `<div class="cat-item">
                 <span contenteditable="true" onblur="UI.editCat('${c}', this.innerText)">${c}</span>
