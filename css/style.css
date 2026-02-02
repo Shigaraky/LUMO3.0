@@ -32,7 +32,7 @@ body { font-family: var(--font); background: var(--bg-body); color: var(--text-m
 .top-bar { height: 65px; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; background: var(--bg-card); border-bottom: 1px solid var(--border); z-index: 50; }
 .icon-btn { background: none; border: none; font-size: 1.4rem; cursor: pointer; padding: 8px; border-radius: 50%; transition: 0.2s; color: var(--text-main); }
 .icon-btn:active { background: var(--bg-body); }
-#main-content { flex: 1; overflow-y: auto; padding: 20px; padding-bottom: 110px; }
+#main-content { flex: 1; overflow-y: auto; padding: 20px; padding-bottom: 120px; /* Spazio extra per il totale flottante */ }
 
 /* AUTH */
 .auth-container { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; }
@@ -59,11 +59,53 @@ body { font-family: var(--font); background: var(--bg-body); color: var(--text-m
 .amount { font-weight: 700; font-size: 1.05rem; white-space: nowrap; }
 .pos { color: var(--success); } .neg { color: var(--text-main); }
 
-/* STATUS INDICATORS (New) */
-.status-badge { font-size: 0.75rem; padding: 4px 8px; border-radius: 8px; display: inline-block; margin-top: 4px; font-weight: 600; }
-.status-paid { background: rgba(16, 185, 129, 0.15); color: var(--success); border: 1px solid rgba(16, 185, 129, 0.2); }
-.status-pending { background: rgba(249, 115, 22, 0.1); color: var(--accent); }
-.item-green-bg { background: rgba(16, 185, 129, 0.05); border-radius: 12px; margin-bottom: 8px; padding: 12px !important; border: 1px solid rgba(16, 185, 129, 0.2) !important; }
+/* NUOVI STILI PER LE SPESE FISSE */
+.rec-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 20px; margin-bottom: 12px; border-radius: 16px;
+    border: 1px solid transparent; cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    transition: transform 0.1s;
+}
+.rec-item:active { transform: scale(0.98); }
+
+/* VERDE: Addebitata (Sfondo verde chiaro, bordo verde) */
+.rec-paid {
+    background-color: rgba(16, 185, 129, 0.15); 
+    border-color: rgba(16, 185, 129, 0.3);
+    color: #064e3b; /* Testo scuro per contrasto */
+}
+[data-theme="dark"] .rec-paid { color: #d1fae5; background-color: rgba(16, 185, 129, 0.2); }
+
+/* GIALLO: In Attesa (Sfondo giallo/arancio chiaro, bordo arancio) */
+.rec-pending {
+    background-color: rgba(249, 115, 22, 0.15);
+    border-color: rgba(249, 115, 22, 0.3);
+    color: #7c2d12;
+}
+[data-theme="dark"] .rec-pending { color: #ffedd5; background-color: rgba(249, 115, 22, 0.2); }
+
+/* TOTALE FLOTTANTE IN BASSO A DESTRA */
+.total-floating {
+    position: fixed;
+    bottom: calc(var(--nav-height) + 20px);
+    left: 24px; /* Per bilanciare il FAB a destra */
+    background: var(--bg-card);
+    padding: 12px 20px;
+    border-radius: 20px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.15);
+    border: 1px solid var(--border);
+    display: flex; flex-direction: column;
+    z-index: 80;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+.total-floating span {
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: var(--text-main);
+}
 
 /* NAV & FAB */
 .bottom-nav { position: fixed; bottom: 0; width: 100%; height: var(--nav-height); background: var(--bg-card); border-top: 1px solid var(--border); display: flex; justify-content: space-around; align-items: center; z-index: 100; padding-bottom: env(safe-area-inset-bottom); border-radius: 24px 24px 0 0; box-shadow: 0 -5px 25px rgba(0,0,0,0.04); }

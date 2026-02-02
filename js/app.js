@@ -160,7 +160,6 @@ const Store = {
         this.data.recurring.forEach(r => {
             if (!r.active) return;
             let safety = 0;
-            // Genera SOLO se la data è oggi o passata
             while (r.nextDate <= today && safety < 12) {
                 const tx = {
                     id: Utils.genId(), type: r.type, amount: r.amount,
@@ -288,46 +287,54 @@ const UI = {
         document.getElementById('main-content').innerHTML = h;
     },
 
-    /* -- NUOVA FUNZIONE SPESE FISSE -- */
+    /* -- LOGICA NUOVA SPESE FISSE -- */
     drawRecurring() {
-        // Calcolo totale mensile
+        // Calcolo totale
         const totalMonthly = Store.data.recurring.reduce((sum, r) => {
             if(!r.active || r.type !== 'expense') return sum;
-            // Se frequenza > 1 mese, spalmiamo il costo (opzionale, ma qui sommo il valore nominale per semplicità)
-            // Se preferisci il costo "reale" mensile: sum + (r.amount / r.freq)
             return sum + r.amount;
         }, 0);
 
-        let h = `<div class="card" style="text-align:center; padding:25px;">
-            <p style="text-transform:uppercase; font-size:0.8rem; letter-spacing:1px; margin-bottom:5px; opacity:0.8">Totale Uscite Fisse Attive</p>
-            <h2 style="color:var(--danger); font-size:2.2rem; margin:0">${Utils.fmtMoney(totalMonthly)}</h2>
-            <button class="btn-primary" onclick="UI.modalRecurring()" style="margin-top:15px; width:auto; padding:10px 20px; font-size:0.9rem;">＋ Nuova</button>
+        let h = `<div class="card" style="text-align:center; padding:25px; margin-bottom:80px;">
+            <p style="text-transform:uppercase; font-size:0.8rem; letter-spacing:1px; margin-bottom:5px; opacity:0.8">Premi + per aggiungere</p>
+            <button class="btn-primary" onclick="UI.modalRecurring()" style="width:auto; padding:10px 20px; font-size:0.9rem;">＋ Nuova Fissa</button>
         </div>`;
 
         if(Store.data.recurring.length) {
-            h += `<div class="card">`;
+            h = `<div style="padding-bottom:20px">`; // Resetta H per rimuovere il bottone grande se c'è lista
             const sorted = [...Store.data.recurring].sort((a,b) => new Date(a.nextDate) - new Date(b.nextDate));
-            
+            const today = new Date();
+            const curMonth = today.getMonth();
+            const curYear = today.getFullYear();
+
             sorted.forEach(r => {
-                // Logica colore: Se la prossima data è nel futuro (es. mese prossimo), 
-                // significa che questo mese è già stato pagato/generato.
-                const isPaid = new Date(r.nextDate) > new Date();
-                const itemClass = isPaid ? 'list-item item-green-bg' : 'list-item';
-                const statusBadge = isPaid 
-                    ? `<span class="status-badge status-paid">✓ Addebitata</span>` 
-                    : `<span class="status-badge status-pending">⏳ In attesa: ${Utils.fmtDate(r.nextDate)}</span>`;
+                const nextD = new Date(r.nextDate);
+                // Se la prossima data è nel futuro (mese > corrente o anno > corrente) -> Pagato (VERDE)
+                // Se la prossima data è nel mese corrente -> In attesa (GIALLO)
+                const isFuture = nextD.getFullYear() > curYear || (nextD.getFullYear() === curYear && nextD.getMonth() > curMonth);
+                
+                // Classi CSS
+                const itemClass = isFuture ? 'rec-item rec-paid' : 'rec-item rec-pending';
+                const statusText = isFuture ? '✓ Addebitata' : `⏳ In attesa: ${Utils.fmtDate(r.nextDate)}`;
 
                 h += `<div class="${itemClass}" onclick="UI.modalRecurring('${r.id}')">
                     <div style="flex:1">
-                        <div style="font-weight:600; font-size:1.05rem">${r.desc}</div>
-                        <div style="font-size:0.85rem; color:var(--text-muted); margin-top:2px;">Ogni ${r.freq} mesi</div>
-                        ${statusBadge}
+                        <div style="font-weight:700; font-size:1.05rem">${r.desc}</div>
+                        <div style="font-size:0.85rem; opacity:0.8; margin-top:4px;">${statusText}</div>
                     </div>
-                    <div class="amount ${r.type==='expense'?'neg':'pos'}">${Utils.fmtMoney(r.amount)}</div>
+                    <div style="font-weight:700; font-size:1.1rem">${Utils.fmtMoney(r.amount)}</div>
                 </div>`;
             });
             h += `</div>`;
         }
+
+        // AGGIUNGO IL TOTALE FLOTTANTE
+        h += `
+        <div class="total-floating">
+            Totale Fisse
+            <span>${Utils.fmtMoney(totalMonthly)}</span>
+        </div>`;
+
         document.getElementById('main-content').innerHTML = h;
     },
 
@@ -357,7 +364,7 @@ const UI = {
                 <button class="btn-primary" style="background:#475569; margin-bottom:10px" onclick="DataMgr.exportData()">📤 Backup Dati</button>
                 <button class="btn-primary" style="background:#475569" onclick="DataMgr.importData()">📥 Ripristina Backup</button>
                 <input type="file" id="import-file" style="display:none" onchange="DataMgr.handleFile(this)">
-                <p style="font-size:0.8rem; color:var(--text-muted); margin-top:15px; text-align:center;">LUMO v3.3</p>
+                <p style="font-size:0.8rem; color:var(--text-muted); margin-top:15px; text-align:center;">LUMO v3.4</p>
             </div>
         `;
         this.openModal('Impostazioni', h);
