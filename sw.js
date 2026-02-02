@@ -1,4 +1,4 @@
-const CACHE_NAME = 'v3.7'; // <--- Questo numero obbliga l'aggiornamento
+const CACHE_NAME = 'v3.8'; // <--- Questo numero obbliga l'aggiornamento
 const ASSETS = [
     './',
     './index.html',

@@ -4,7 +4,7 @@ const Utils = {
     fmtDate: (d) => d ? new Date(d).toLocaleDateString('it-IT', {day:'2-digit', month:'2-digit', year:'numeric'}) : 'N/D',
     genId: () => Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
     
-    // FIX DATA LOCALE: Risolve il problema del "Giallo" su Oggi
+    // Ritorna la data locale in formato YYYY-MM-DD stringa
     today: () => {
         const d = new Date();
         const offset = d.getTimezoneOffset() * 60000;
@@ -118,17 +118,20 @@ const Store = {
     },
 
     checkRecurring() {
-        // Usa la data locale corretta
+        // Usa la stringa YYYY-MM-DD per confronto DIRETTO
         const todayStr = Utils.today();
         let changed = false;
         
         this.data.recurring.forEach(r => {
             if (!r.active || !r.nextDate) return;
             
-            // Confronto stringhe 'YYYY-MM-DD' per evitare ogni problema di orario
+            // CONFRONTO STRINGHE (Più robusto)
+            // Es: "2026-02-03" > "2026-02-02" -> VERO (Futuro, esci)
+            // Es: "2026-02-02" > "2026-02-02" -> FALSO (Oggi, procedi)
             if (r.nextDate > todayStr) return; 
 
             let safety = 0;
+            // Esegue finché la data è <= oggi
             while (r.nextDate <= todayStr && safety < 12) {
                 const tx = {
                     id: Utils.genId(), type: r.type, amount: parseFloat(r.amount),
@@ -326,42 +329,23 @@ const UI = {
     },
     drawChart(d) {
         const c=document.getElementById('chart'); if(!c)return; if(window.myChart)window.myChart.destroy();
-        // Registra il plugin DataLabels
         Chart.register(ChartDataLabels);
         window.myChart=new Chart(c,{
             type:'doughnut',
-            data:{
-                labels:Object.keys(d),
-                datasets:[{
-                    data:Object.values(d),
-                    backgroundColor:['#0f766e','#f97316','#10b981','#06b6d4','#8b5cf6','#f43f5e','#64748b'],
-                    borderWidth:0
-                }]
-            },
+            data:{labels:Object.keys(d),datasets:[{data:Object.values(d),backgroundColor:['#0f766e','#f97316','#10b981','#06b6d4','#8b5cf6','#f43f5e','#64748b'],borderWidth:0}]},
             options:{
-                responsive:true,
-                maintainAspectRatio:false,
+                responsive:true, maintainAspectRatio:false,
                 plugins:{
                     legend:{position:'right',labels:{boxWidth:10,font:{size:11}}},
-                    tooltip: { enabled: true },
-                    datalabels: {
-                        color: '#fff',
-                        font: { weight: 'bold', size: 11 },
-                        formatter: (val, ctx) => {
-                            let sum = 0;
-                            let dataArr = ctx.chart.data.datasets[0].data;
-                            dataArr.map(data => { sum += data; });
-                            let percentage = (val*100 / sum).toFixed(0)+"%";
-                            return percentage; // Ritorna es "40%"
-                        }
-                    }
+                    tooltip:{enabled:true},
+                    datalabels:{color:'#fff',font:{weight:'bold',size:11},formatter:(val,ctx)=>{let sum=0;let dataArr=ctx.chart.data.datasets[0].data;dataArr.map(data=>{sum+=data});let percentage=(val*100/sum).toFixed(0)+"%";return percentage;}}
                 },
                 cutout:'65%'
             }
         });
     },
 
-    modalSettings() { /* ... codice settings invariato ... */ const theme = Store.data.settings.theme; const h=`<div class="card" style="margin-top:0"><button class="list-item" style="width:100%; border:none; background:none;" onclick="UI.modalCategories()"><div style="font-weight:600">🏷 Gestione Categorie</div><div>›</div></button><div class="list-item" style="cursor:default"><div style="font-weight:600">Tema Scuro</div><button onclick="UI.toggleTheme()" style="padding:8px 15px; border-radius:20px; border:1px solid var(--border); background:var(--bg-body)">${theme==='dark'?'ON':'OFF'}</button></div></div><div class="card"><h4>Dati & Sicurezza</h4><button class="btn-primary" style="background:#475569; margin-bottom:10px" onclick="DataMgr.exportData()">📤 Backup Dati</button><button class="btn-primary" style="background:#475569" onclick="DataMgr.importData()">📥 Ripristina Backup</button><input type="file" id="import-file" style="display:none" onchange="DataMgr.handleFile(this)"><p style="font-size:0.8rem; color:var(--text-muted); margin-top:15px; text-align:center;">LUMO v3.7</p></div>`; this.openModal('Impostazioni', h); },
+    modalSettings() { const theme = Store.data.settings.theme; const h=`<div class="card" style="margin-top:0"><button class="list-item" style="width:100%; border:none; background:none;" onclick="UI.modalCategories()"><div style="font-weight:600">🏷 Gestione Categorie</div><div>›</div></button><div class="list-item" style="cursor:default"><div style="font-weight:600">Tema Scuro</div><button onclick="UI.toggleTheme()" style="padding:8px 15px; border-radius:20px; border:1px solid var(--border); background:var(--bg-body)">${theme==='dark'?'ON':'OFF'}</button></div></div><div class="card"><h4>Dati & Sicurezza</h4><button class="btn-primary" style="background:#475569; margin-bottom:10px" onclick="DataMgr.exportData()">📤 Backup Dati</button><button class="btn-primary" style="background:#475569" onclick="DataMgr.importData()">📥 Ripristina Backup</button><input type="file" id="import-file" style="display:none" onchange="DataMgr.handleFile(this)"><p style="font-size:0.8rem; color:var(--text-muted); margin-top:15px; text-align:center;">LUMO v3.8</p></div>`; this.openModal('Impostazioni', h); },
     toggleTheme() { Store.data.settings.theme = Store.data.settings.theme==='light'?'dark':'light'; Store.applyTheme(); Store.save(); this.modalSettings(); },
     modalCategories() { let h=`<div class="form-group" style="display:flex; gap:10px;"><input type="text" id="new-cat" placeholder="Nuova..."><button class="btn-primary" style="width:auto; margin:0;" onclick="UI.addCat()">+</button></div><div class="cat-list">`; Store.data.categories.forEach(c=>{h+=`<div class="cat-item"><span contenteditable="true" onblur="UI.editCat('${c}',this.innerText)">${c}</span><div class="cat-actions"><button style="color:var(--text-muted)">✏️</button><button style="color:var(--danger)" onclick="if(confirm('Eliminare?'))UI.delCat('${c}')">🗑</button></div></div>`}); h+='</div>'; this.openModal('Categorie', h); },
     addCat() { const v=document.getElementById('new-cat').value.trim(); if(v){Store.addCategory(v);this.modalCategories()} },
