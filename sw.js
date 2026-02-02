@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lumo-v3.5'; // <--- Questo numero obbliga l'aggiornamento
+const CACHE_NAME = 'lumo-v3.6-hotfix'; // <--- Questo numero obbliga l'aggiornamento
 const ASSETS = [
     './',
     './index.html',

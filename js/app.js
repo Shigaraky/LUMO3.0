@@ -6,8 +6,7 @@ const Utils = {
     today: () => new Date().toISOString().split('T')[0],
     addMonths: (d, m) => { 
         let x = new Date(d); 
-        // Protezione date invalide
-        if(isNaN(x.getTime())) return Utils.today(); 
+        if(isNaN(x.getTime())) return new Date().toISOString().split('T')[0];
         x.setMonth(x.getMonth() + parseInt(m)); 
         return x.toISOString().split('T')[0]; 
     }
@@ -29,7 +28,6 @@ const Store = {
         if (s) {
             try { 
                 this.data = JSON.parse(s);
-                // Fix compatibilità
                 if(!this.data.categories) this.data.categories = ['Alimentari', 'Casa', 'Trasporti', 'Svago', 'Salute', 'Shopping', 'Altro'];
             } catch (e) { console.error(e); }
         } else {
@@ -61,7 +59,6 @@ const Store = {
             this.revertBalance(this.data.transactions[oldIdx]);
             this.data.transactions[oldIdx] = tx;
         } else {
-            // Rateizzazioni
             if (tx.installments > 1 && tx.type === 'expense') {
                 const baseAmt = tx.amount / tx.installments;
                 const baseDate = new Date(tx.date);
@@ -87,14 +84,13 @@ const Store = {
         const idx = this.data.recurring.findIndex(r => r.id === rec.id);
         if (idx > -1) this.data.recurring[idx] = rec; else this.data.recurring.push(rec);
         this.save();
-        this.checkRecurring(); // Ricontrolla subito
+        this.checkRecurring();
     },
     deleteRecurring(id) {
         this.data.recurring = this.data.recurring.filter(r => r.id !== id);
         this.save();
     },
 
-    /* -- CATEGORIE -- */
     addCategory(n) { if(!this.data.categories.includes(n)) { this.data.categories.push(n); this.save(); } },
     updateCategory(o, n) { 
         const i = this.data.categories.indexOf(o); 
@@ -105,7 +101,6 @@ const Store = {
         this.data.transactions.forEach(t=>{if(t.category===n)t.category='Altro'}); this.save(); 
     },
 
-    /* -- SALDI -- */
     updateAccBal(id, amt, type, rev=false) {
         const acc = this.data.accounts.find(a => a.id === id);
         if(!acc) return;
@@ -121,24 +116,29 @@ const Store = {
         else this.updateAccBal(tx.accountId,tx.amount,tx.type,true);
     },
 
-    /* -- LOGICA CORE SCADENZE -- */
+    /* -- LOGICA SCADENZE BLINDATA -- */
     checkRecurring() {
-        const today = Utils.today();
+        const todayStr = Utils.today();
+        const todayDate = new Date();
+        todayDate.setHours(0,0,0,0);
+        
         let changed = false;
         
         this.data.recurring.forEach(r => {
             if (!r.active) return;
+            if (!r.nextDate) return;
             
-            // PROTEZIONE: Frequenza minima 1 mese
-            if(!r.freq || r.freq < 1) r.freq = 1;
+            // SECURITY CHECK: Se la prossima data è nel futuro, NON FARE NULLA.
+            const nextDateObj = new Date(r.nextDate);
+            nextDateObj.setHours(0,0,0,0);
             
-            // PROTEZIONE: Se la data è invalida, non fare nulla
-            if(!r.nextDate || isNaN(new Date(r.nextDate).getTime())) return;
+            if (nextDateObj > todayDate) {
+                return; // Esce subito, evita loop e addebiti futuri
+            }
 
+            // Se siamo qui, la data è oggi o passata. Processiamo.
             let safety = 0;
-            // Esegue SOLO se la data è OGGI o PASSATA (<= today)
-            // Se è FUTURA, il while non parte e non genera nulla.
-            while (r.nextDate <= today && safety < 12) {
+            while (new Date(r.nextDate) <= todayDate && safety < 12) {
                 const tx = {
                     id: Utils.genId(),
                     type: r.type,
@@ -154,7 +154,7 @@ const Store = {
                 this.applyBalance(tx);
                 
                 // Avanza data
-                r.nextDate = Utils.addMonths(r.nextDate, parseInt(r.freq));
+                r.nextDate = Utils.addMonths(r.nextDate, parseInt(r.freq) || 1);
                 changed = true;
                 safety++;
             }
@@ -176,7 +176,6 @@ const UI = {
         else if(p==='recurring') this.drawRecurring();
     },
 
-    /* -- DASH -- */
     drawDash() {
         const total = Store.data.accounts.reduce((s,a) => s + a.balance, 0);
         const stats = this.calcStats();
@@ -206,7 +205,6 @@ const UI = {
         this.drawChart(stats.cats);
     },
 
-    /* -- LISTE -- */
     drawTxList() {
         const all = [...Store.data.transactions].sort((a,b) => new Date(b.date) - new Date(a.date));
         document.getElementById('main-content').innerHTML = `
@@ -219,6 +217,7 @@ const UI = {
         const filt = all.filter(t => t.desc.toLowerCase().includes(q) || t.category.toLowerCase().includes(q));
         this.drawList(filt, 'full-list');
     },
+
     drawList(list, id) {
         const el = document.getElementById(id);
         if(!list.length) { el.innerHTML='<div style="padding:20px; text-align:center; opacity:0.5">Nessun dato</div>'; return; }
@@ -249,9 +248,7 @@ const UI = {
         document.getElementById('main-content').innerHTML = h;
     },
 
-    /* -- SPESE FISSE CORRETTE -- */
     drawRecurring() {
-        // Calcolo totale sicuro (con parseFloat)
         const tot = Store.data.recurring.reduce((s, r) => r.active && r.type==='expense' ? s + parseFloat(r.amount) : s, 0);
 
         let h = `<div class="card" style="text-align:center; padding:25px; margin-bottom:50px;">
@@ -259,8 +256,9 @@ const UI = {
             <button class="btn-primary" onclick="UI.modalRecurring()" style="width:auto; padding:10px 25px">＋ Aggiungi Nuova</button>
         </div>`;
 
-        if(Store.data.recurring.length) {
-            h = `<div style="padding-bottom:60px">`; 
+        // LISTA SEMPRE VISIBILE (BUG FIX)
+        if(Store.data.recurring.length > 0) {
+            h += `<div style="padding-bottom:80px">`; 
             const sorted = [...Store.data.recurring].sort((a,b) => new Date(a.nextDate) - new Date(b.nextDate));
             const today = new Date();
             const curM = today.getMonth();
@@ -268,8 +266,6 @@ const UI = {
 
             sorted.forEach(r => {
                 const nd = new Date(r.nextDate);
-                // Logica Colori
-                // Verde: Se anno > corrente, oppure anno == corrente ma mese > corrente.
                 const isFuture = nd.getFullYear() > curY || (nd.getFullYear() === curY && nd.getMonth() > curM);
                 
                 let cssClass = 'rec-card ';
@@ -279,7 +275,6 @@ const UI = {
                     cssClass += 'rec-green';
                     status = '✓ Addebitata / Futura';
                 } else {
-                    // È il mese corrente (o passato, se non processata)
                     cssClass += 'rec-yellow';
                     status = `⏳ In arrivo: ${Utils.fmtDate(r.nextDate)}`;
                 }
@@ -387,7 +382,40 @@ const UI = {
     drawChart(d) {
         const c=document.getElementById('chart'); if(!c)return; if(window.myChart)window.myChart.destroy();
         window.myChart=new Chart(c,{type:'doughnut',data:{labels:Object.keys(d),datasets:[{data:Object.values(d),backgroundColor:['#0f766e','#f97316','#10b981','#06b6d4','#8b5cf6','#f43f5e','#64748b'],borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{boxWidth:10,font:{size:11}}}},cutout:'70%'}});
-    }
+    },
+
+    modalSettings() {
+        const theme = Store.data.settings.theme;
+        const h = `
+            <div class="card" style="margin-top:0">
+                <button class="list-item" style="width:100%; border:none; background:none;" onclick="UI.modalCategories()">
+                    <div style="font-weight:600">🏷 Gestione Categorie</div>
+                    <div>›</div>
+                </button>
+                <div class="list-item" style="cursor:default">
+                    <div style="font-weight:600">Tema Scuro</div>
+                    <button onclick="UI.toggleTheme()" style="padding:8px 15px; border-radius:20px; border:1px solid var(--border); background:var(--bg-body)">${theme==='dark'?'ON':'OFF'}</button>
+                </div>
+            </div>
+            <div class="card">
+                <h4>Dati & Sicurezza</h4>
+                <button class="btn-primary" style="background:#475569; margin-bottom:10px" onclick="DataMgr.exportData()">📤 Backup Dati</button>
+                <button class="btn-primary" style="background:#475569" onclick="DataMgr.importData()">📥 Ripristina Backup</button>
+                <input type="file" id="import-file" style="display:none" onchange="DataMgr.handleFile(this)">
+                <p style="font-size:0.8rem; color:var(--text-muted); margin-top:15px; text-align:center;">LUMO v3.6</p>
+            </div>
+        `;
+        this.openModal('Impostazioni', h);
+    },
+    toggleTheme() { Store.data.settings.theme = Store.data.settings.theme==='light'?'dark':'light'; Store.applyTheme(); Store.save(); this.modalSettings(); },
+    modalCategories() {
+        let h = `<div class="form-group" style="display:flex; gap:10px;"><input type="text" id="new-cat" placeholder="Nuova..."><button class="btn-primary" style="width:auto; margin:0;" onclick="UI.addCat()">+</button></div><div class="cat-list">`;
+        Store.data.categories.forEach(c => { h += `<div class="cat-item"><span contenteditable="true" onblur="UI.editCat('${c}', this.innerText)">${c}</span><div class="cat-actions"><button style="color:var(--text-muted)">✏️</button><button style="color:var(--danger)" onclick="if(confirm('Eliminare?')) UI.delCat('${c}')">🗑</button></div></div>`; });
+        h += `</div>`; this.openModal('Categorie', h);
+    },
+    addCat() { const v = document.getElementById('new-cat').value.trim(); if(v) { Store.addCategory(v); this.modalCategories(); } },
+    editCat(o, n) { if(n && n!==o) Store.updateCategory(o, n); },
+    delCat(n) { Store.deleteCategory(n); this.modalCategories(); }
 };
 
 const Router = { page:'dashboard', navigate(p){this.page=p;document.querySelectorAll('.nav-item').forEach(e=>e.classList.remove('active'));document.querySelectorAll(`.nav-item[onclick*="${p}"]`).forEach(e=>e.classList.add('active'));UI.render()}, refresh(){this.navigate(this.page)}};
