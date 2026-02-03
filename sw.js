@@ -1,23 +1,29 @@
-const CACHE_NAME = 'v3.8'; // <--- Questo numero obbliga l'aggiornamento
+// AGGIORNATO A VERSIONE 4.0
+const CACHE_NAME = 'lumo-v4.0'; 
+
 const ASSETS = [
     './',
     './index.html',
     './css/style.css',
     './js/app.js',
     './manifest.json',
+    // Font
     'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap',
-    'https://cdn.jsdelivr.net/npm/chart.js'
+    // Libreria Grafici
+    'https://cdn.jsdelivr.net/npm/chart.js',
+    // NUOVO: Plugin per le percentuali (IMPORTANTE)
+    'https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0'
 ];
 
-// Installazione: scarica i file
+// Installazione: Scarica e salva i file
 self.addEventListener('install', e => {
     e.waitUntil(
         caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS))
     );
-    self.skipWaiting(); // Forza l'attivazione immediata
+    self.skipWaiting(); // Forza l'aggiornamento immediato
 });
 
-// Attivazione: pulisce le vecchie cache
+// Attivazione: Cancella le vecchie versioni (v3.8, v3.7, ecc.)
 self.addEventListener('activate', e => {
     e.waitUntil(
         caches.keys().then(keys => {
@@ -29,7 +35,7 @@ self.addEventListener('activate', e => {
     self.clients.claim();
 });
 
-// Fetch: serve i file dalla cache o da internet
+// Fetch: Serve i file dalla cache se offline, altrimenti scarica
 self.addEventListener('fetch', e => {
     e.respondWith(
         caches.match(e.request).then(response => {
