@@ -46,7 +46,7 @@ const Store = {
         const todayStr = Utils.today(); let changed = false;
         this.data.recurring.forEach(r => {
             if (!r.active || !r.nextDate) return;
-            if (r.nextDate > todayStr) return;
+            if (r.nextDate > todayStr) return; // Se futura, non toccare
             let safety = 0;
             while (r.nextDate <= todayStr && safety < 12) {
                 const tx = { id: Utils.genId(), type: r.type, amount: parseFloat(r.amount), desc: r.desc + ' (Fissa)', category: r.category, accountId: r.accountId, date: r.nextDate, installments: 1 };
@@ -69,7 +69,6 @@ const UI = {
     },
 
     drawDash() {
-        // FILTRA SOLO I CONTI NON-RISPARMIO PER LA DASHBOARD
         const liquidAccounts = Store.data.accounts.filter(a => a.type !== 'savings');
         const total = liquidAccounts.reduce((s,a) => s + a.balance, 0);
         const stats = this.calcStats();
@@ -119,60 +118,47 @@ const UI = {
             </div>`).join('');
     },
 
-    /* -- NUOVA SEZIONE PATRIMONIO (Conti + Risparmi) -- */
     drawAccounts() {
         const savings = Store.data.accounts.filter(a => a.type === 'savings');
         const liquid = Store.data.accounts.filter(a => a.type !== 'savings');
         const totSavings = savings.reduce((s,a) => s + a.balance, 0);
-        const totLiquid = liquid.reduce((s,a) => s + a.balance, 0);
 
         let h = '';
-
-        // 1. SEZIONE RISPARMI (ORO)
-        h += `<div class="savings-card">
-            <p style="opacity:0.9; font-size:0.9rem; text-transform:uppercase;">Totale Risparmi</p>
-            <h2>${Utils.fmtMoney(totSavings)}</h2>
-        </div>`;
-        
+        h += `<div class="savings-card"><p style="opacity:0.9; font-size:0.9rem; text-transform:uppercase;">Totale Risparmi</p><h2>${Utils.fmtMoney(totSavings)}</h2></div>`;
         h += `<h4 style="margin:20px 0 10px 5px; opacity:0.7">Conti Deposito & Salvadanai</h4>`;
-        savings.forEach(a => {
-            h += `<div class="acc-card acc-savings" onclick="UI.modalAccount('${a.id}')">
-                <div><div style="font-weight:700; font-size:1.1rem">${a.name}</div><div style="font-size:0.8rem; opacity:0.6; text-transform:uppercase">Risparmio</div></div>
-                <div style="font-size:1.2rem; font-weight:700; color:var(--gold)">${Utils.fmtMoney(a.balance)}</div>
-            </div>`;
-        });
+        savings.forEach(a => { h += `<div class="acc-card acc-savings" onclick="UI.modalAccount('${a.id}')"><div><div style="font-weight:700; font-size:1.1rem">${a.name}</div><div style="font-size:0.8rem; opacity:0.6; text-transform:uppercase">Risparmio</div></div><div style="font-size:1.2rem; font-weight:700; color:var(--gold)">${Utils.fmtMoney(a.balance)}</div></div>`; });
         if(savings.length === 0) h += `<div style="text-align:center; padding:15px; opacity:0.5; font-style:italic">Nessun conto risparmio attivo</div>`;
-
-        // 2. SEZIONE OPERATIVA (STANDARD)
         h += `<h4 style="margin:30px 0 10px 5px; opacity:0.7">Conti Operativi (Liquidità)</h4>`;
-        liquid.forEach(a => {
-            h += `<div class="acc-card" onclick="UI.modalAccount('${a.id}')">
-                <div><div style="font-weight:700; font-size:1.1rem">${a.name}</div><div style="font-size:0.8rem; opacity:0.6; text-transform:uppercase">${a.type}</div></div>
-                <div style="font-size:1.2rem; font-weight:700; color:var(--primary)">${Utils.fmtMoney(a.balance)}</div>
-            </div>`;
-        });
-
-        // Tasto Aggiungi
-        h += `<div style="height:80px; display:flex; align-items:center; justify-content:center;">
-            <button onclick="UI.modalAccount()" style="background:none; border:2px dashed var(--border); padding:15px 40px; border-radius:15px; color:var(--text-muted); font-weight:700">+ Aggiungi Conto</button>
-        </div>`;
-
+        liquid.forEach(a => { h += `<div class="acc-card" onclick="UI.modalAccount('${a.id}')"><div><div style="font-weight:700; font-size:1.1rem">${a.name}</div><div style="font-size:0.8rem; opacity:0.6; text-transform:uppercase">${a.type}</div></div><div style="font-size:1.2rem; font-weight:700; color:var(--primary)">${Utils.fmtMoney(a.balance)}</div></div>`; });
+        h += `<div style="height:80px; display:flex; align-items:center; justify-content:center;"><button onclick="UI.modalAccount()" style="background:none; border:2px dashed var(--border); padding:15px 40px; border-radius:15px; color:var(--text-muted); font-weight:700">+ Aggiungi Conto</button></div>`;
         document.getElementById('main-content').innerHTML = h;
     },
 
+    /* -- FIX LOGICA COLORI RICORRENTI -- */
     drawRecurring() {
         const tot = Store.data.recurring.reduce((s, r) => r.active && r.type==='expense' ? s + parseFloat(r.amount) : s, 0);
         let h = `<div class="card" style="text-align:center; padding:25px; margin-bottom:50px;"><p style="opacity:0.6; font-size:0.9rem; margin-bottom:10px">Gestisci le spese automatiche</p><button class="btn-primary" onclick="UI.modalRecurring()" style="width:auto; padding:10px 25px">＋ Aggiungi Nuova</button></div>`;
         if(Store.data.recurring.length > 0) {
             h += `<div style="padding-bottom:80px">`; 
             const sorted = [...Store.data.recurring].sort((a,b) => new Date(a.nextDate) - new Date(b.nextDate));
-            const todayStr = Utils.today();
+            const now = new Date();
+            const curM = now.getMonth(); 
+            const curY = now.getFullYear();
+
             sorted.forEach(r => {
-                // Logica colore
-                let cssClass = 'rec-card ';
-                let status = '';
-                if (r.nextDate > todayStr) { cssClass += 'rec-green'; status = '✓ Addebitata / Futura'; }
-                else { cssClass += 'rec-yellow'; status = `⏳ In arrivo: ${Utils.fmtDate(r.nextDate)}`; }
+                const nd = new Date(r.nextDate);
+                
+                // LOGICA CORRETTA:
+                // Se Anno Scadenza > Anno Corrente -> VERDE
+                // OPPURE
+                // Se Anno Scadenza == Anno Corrente E Mese Scadenza > Mese Corrente -> VERDE
+                // Altrimenti (Mese corrente o passato) -> GIALLO
+                
+                const isNextMonthOrLater = nd.getFullYear() > curY || (nd.getFullYear() === curY && nd.getMonth() > curM);
+                
+                let cssClass = isNextMonthOrLater ? 'rec-card rec-green' : 'rec-card rec-yellow';
+                let status = isNextMonthOrLater ? '✓ Addebitata (Prox: ' + Utils.fmtDate(r.nextDate) + ')' : `⏳ In arrivo: ${Utils.fmtDate(r.nextDate)}`;
+                
                 h += `<div class="${cssClass}" onclick="UI.modalRecurring('${r.id}')"><div><div style="font-weight:700; font-size:1.05rem">${r.desc}</div><span class="status-badge">${status}</span></div><div style="font-weight:800; font-size:1.15rem">${Utils.fmtMoney(r.amount)}</div></div>`;
             }); h += `</div>`;
         }
@@ -224,7 +210,7 @@ const UI = {
         Chart.register(ChartDataLabels);
         window.myChart=new Chart(c,{type:'doughnut',data:{labels:Object.keys(d),datasets:[{data:Object.values(d),backgroundColor:['#0f766e','#f97316','#10b981','#06b6d4','#8b5cf6','#f43f5e','#64748b'],borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{boxWidth:10,font:{size:11}}},tooltip:{enabled:true},datalabels:{color:'#fff',font:{weight:'bold',size:11},formatter:(val,ctx)=>{let sum=0;let dataArr=ctx.chart.data.datasets[0].data;dataArr.map(data=>{sum+=data});let percentage=(val*100/sum).toFixed(0)+"%";return percentage;}}},cutout:'65%'}});
     },
-    modalSettings() { const theme = Store.data.settings.theme; const h=`<div class="card" style="margin-top:0"><button class="list-item" style="width:100%; border:none; background:none;" onclick="UI.modalCategories()"><div style="font-weight:600">🏷 Gestione Categorie</div><div>›</div></button><div class="list-item" style="cursor:default"><div style="font-weight:600">Tema Scuro</div><button onclick="UI.toggleTheme()" style="padding:8px 15px; border-radius:20px; border:1px solid var(--border); background:var(--bg-body)">${theme==='dark'?'ON':'OFF'}</button></div></div><div class="card"><h4>Dati & Sicurezza</h4><button class="btn-primary" style="background:#475569; margin-bottom:10px" onclick="DataMgr.exportData()">📤 Backup Dati</button><button class="btn-primary" style="background:#475569" onclick="DataMgr.importData()">📥 Ripristina Backup</button><input type="file" id="import-file" style="display:none" onchange="DataMgr.handleFile(this)"><p style="font-size:0.8rem; color:var(--text-muted); margin-top:15px; text-align:center;">LUMO v4.0</p></div>`; this.openModal('Impostazioni', h); },
+    modalSettings() { const theme = Store.data.settings.theme; const h=`<div class="card" style="margin-top:0"><button class="list-item" style="width:100%; border:none; background:none;" onclick="UI.modalCategories()"><div style="font-weight:600">🏷 Gestione Categorie</div><div>›</div></button><div class="list-item" style="cursor:default"><div style="font-weight:600">Tema Scuro</div><button onclick="UI.toggleTheme()" style="padding:8px 15px; border-radius:20px; border:1px solid var(--border); background:var(--bg-body)">${theme==='dark'?'ON':'OFF'}</button></div></div><div class="card"><h4>Dati & Sicurezza</h4><button class="btn-primary" style="background:#475569; margin-bottom:10px" onclick="DataMgr.exportData()">📤 Backup Dati</button><button class="btn-primary" style="background:#475569" onclick="DataMgr.importData()">📥 Ripristina Backup</button><input type="file" id="import-file" style="display:none" onchange="DataMgr.handleFile(this)"><p style="font-size:0.8rem; color:var(--text-muted); margin-top:15px; text-align:center;">LUMO v4.1</p></div>`; this.openModal('Impostazioni', h); },
     toggleTheme() { Store.data.settings.theme = Store.data.settings.theme==='light'?'dark':'light'; Store.applyTheme(); Store.save(); this.modalSettings(); },
     modalCategories() { let h=`<div class="form-group" style="display:flex; gap:10px;"><input type="text" id="new-cat" placeholder="Nuova..."><button class="btn-primary" style="width:auto; margin:0;" onclick="UI.addCat()">+</button></div><div class="cat-list">`; Store.data.categories.forEach(c=>{h+=`<div class="cat-item"><span contenteditable="true" onblur="UI.editCat('${c}',this.innerText)">${c}</span><div class="cat-actions"><button style="color:var(--text-muted)">✏️</button><button style="color:var(--danger)" onclick="if(confirm('Eliminare?'))UI.delCat('${c}')">🗑</button></div></div>`}); h+='</div>'; this.openModal('Categorie', h); },
     addCat() { const v=document.getElementById('new-cat').value.trim(); if(v){Store.addCategory(v);this.modalCategories()} },
