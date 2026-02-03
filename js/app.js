@@ -3,51 +3,22 @@ const Utils = {
     fmtMoney: (v) => new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' }).format(v),
     fmtDate: (d) => d ? new Date(d).toLocaleDateString('it-IT', {day:'2-digit', month:'2-digit', year:'numeric'}) : 'N/D',
     genId: () => Date.now().toString(36) + Math.random().toString(36).substr(2, 5),
-    
-    // DATA LOCALE CORRETTA (YYYY-MM-DD)
-    today: () => { 
-        const d = new Date(); 
-        const offset = d.getTimezoneOffset() * 60000; 
-        return new Date(d.getTime() - offset).toISOString().split('T')[0]; 
-    },
-    
-    addMonths: (d, m) => { 
-        let x = new Date(d); 
-        if(isNaN(x.getTime())) return Utils.today(); 
-        x.setMonth(x.getMonth() + parseInt(m)); 
-        return x.toISOString().split('T')[0]; 
-    }
+    today: () => { const d=new Date(); const o=d.getTimezoneOffset()*60000; return new Date(d.getTime()-o).toISOString().split('T')[0]; },
+    addMonths: (d, m) => { let x=new Date(d); if(isNaN(x.getTime())) return Utils.today(); x.setMonth(x.getMonth()+parseInt(m)); return x.toISOString().split('T')[0]; }
 };
 
 /* === STORE === */
 const Store = {
-    data: { 
-        pin: null, accounts: [], transactions: [], recurring: [], 
-        categories: ['Alimentari', 'Casa', 'Trasporti', 'Svago', 'Salute', 'Shopping', 'Ristoranti', 'Stipendio', 'Altro'], 
-        settings: { theme: 'light' } 
-    },
-
+    data: { pin: null, accounts: [], transactions: [], recurring: [], categories: ['Alimentari', 'Casa', 'Trasporti', 'Svago', 'Salute', 'Shopping', 'Ristoranti', 'Stipendio', 'Altro'], settings: { theme: 'light' } },
     init() {
         const s = localStorage.getItem('LUMO_V3');
-        if (s) { 
-            try { 
-                this.data = JSON.parse(s); 
-                if(!this.data.categories) this.data.categories = ['Alimentari', 'Casa', 'Trasporti', 'Svago', 'Salute', 'Shopping', 'Altro']; 
-            } catch (e) { console.error(e); } 
-        } else {
-            this.data.accounts = [{ id: 'a1', name: 'Conto Corrente', type: 'bank', balance: 0 }];
-            this.save();
-        }
-        this.applyTheme();
-        this.checkRecurring();
+        if (s) { try { this.data = JSON.parse(s); if(!this.data.categories) this.data.categories = ['Alimentari', 'Casa', 'Trasporti', 'Svago', 'Salute', 'Shopping', 'Altro']; } catch (e) { console.error(e); } } 
+        else { this.data.accounts = [{ id: 'a1', name: 'Conto Corrente', type: 'bank', balance: 0 }]; this.save(); }
+        this.applyTheme(); this.checkRecurring();
     },
-
     save() { localStorage.setItem('LUMO_V3', JSON.stringify(this.data)); },
-
-    /* -- CRUD -- */
     saveAccount(acc) { const idx = this.data.accounts.findIndex(a => a.id === acc.id); if (idx > -1) this.data.accounts[idx] = acc; else this.data.accounts.push(acc); this.save(); },
     deleteAccount(id) { this.data.accounts = this.data.accounts.filter(a => a.id !== id); this.data.transactions = this.data.transactions.filter(t => t.accountId !== id && t.fromAccount !== id && t.toAccount !== id); this.data.recurring = this.data.recurring.filter(r => r.accountId !== id); this.save(); },
-    
     saveTransaction(tx) {
         const oldIdx = this.data.transactions.findIndex(t => t.id === tx.id);
         if (oldIdx > -1) { this.revertBalance(this.data.transactions[oldIdx]); this.data.transactions[oldIdx] = tx; } 
@@ -62,62 +33,90 @@ const Store = {
             } this.data.transactions.push(tx);
         } this.applyBalance(tx); this.save();
     },
-    
     deleteTransaction(id) { const idx = this.data.transactions.findIndex(t => t.id === id); if (idx > -1) { this.revertBalance(this.data.transactions[idx]); this.data.transactions.splice(idx, 1); this.save(); } },
-    
     saveRecurring(rec) { const idx = this.data.recurring.findIndex(r => r.id === rec.id); if (idx > -1) this.data.recurring[idx] = rec; else this.data.recurring.push(rec); this.save(); this.checkRecurring(); },
-    
     deleteRecurring(id) { this.data.recurring = this.data.recurring.filter(r => r.id !== id); this.save(); },
-    
     addCategory(n) { if(!this.data.categories.includes(n)) { this.data.categories.push(n); this.save(); } },
     updateCategory(o, n) { const i = this.data.categories.indexOf(o); if(i>-1) { this.data.categories[i]=n; this.data.transactions.forEach(t=>{if(t.category===o)t.category=n}); this.data.recurring.forEach(r=>{if(r.category===o)r.category=n}); this.save(); } },
     deleteCategory(n) { this.data.categories = this.data.categories.filter(c=>c!==n); this.data.transactions.forEach(t=>{if(t.category===n)t.category='Altro'}); this.save(); },
-    
     updateAccBal(id, amt, type, rev=false) { const acc = this.data.accounts.find(a => a.id === id); if(!acc) return; let v = parseFloat(amt); if(rev) v = -v; if(type === 'income') acc.balance += v; else acc.balance -= v; },
     applyBalance(tx) { if(tx.type==='transfer') { this.updateAccBal(tx.fromAccount,tx.amount,'expense'); this.updateAccBal(tx.toAccount,tx.amount,'income'); } else this.updateAccBal(tx.accountId,tx.amount,tx.type); },
     revertBalance(tx) { if(tx.type==='transfer') { this.updateAccBal(tx.fromAccount,tx.amount,'expense',true); this.updateAccBal(tx.toAccount,tx.amount,'income',true); } else this.updateAccBal(tx.accountId,tx.amount,tx.type,true); },
-
-    /* -- LOGICA SCADENZE RIGOROSA -- */
     checkRecurring() {
-        const todayStr = Utils.today(); 
-        let changed = false;
-        
+        const todayStr = Utils.today(); let changed = false;
         this.data.recurring.forEach(r => {
             if (!r.active || !r.nextDate) return;
-            
-            // SE LA DATA È FUTURA (es. 20 Feb e oggi è 3 Feb): STOP.
-            // Non tocca nulla. Rimane "in attesa".
-            if (r.nextDate > todayStr) return; 
-
-            // SE LA DATA È OGGI O PASSATA: PROCEDI.
+            if (r.nextDate > todayStr) return;
             let safety = 0;
             while (r.nextDate <= todayStr && safety < 12) {
-                const tx = { 
-                    id: Utils.genId(), 
-                    type: r.type, 
-                    amount: parseFloat(r.amount), 
-                    desc: r.desc + ' (Fissa)', 
-                    category: r.category, 
-                    accountId: r.accountId, 
-                    date: r.nextDate, 
-                    installments: 1 
-                };
-                
-                // 1. Crea la transazione
-                this.data.transactions.push(tx); 
-                // 2. Aggiorna i saldi
-                this.applyBalance(tx);
-                // 3. Sposta la data al prossimo mese
-                r.nextDate = Utils.addMonths(r.nextDate, parseInt(r.freq) || 1);
-                
-                changed = true; 
-                safety++;
+                const tx = { id: Utils.genId(), type: r.type, amount: parseFloat(r.amount), desc: r.desc + ' (Fissa)', category: r.category, accountId: r.accountId, date: r.nextDate, installments: 1 };
+                this.data.transactions.push(tx); this.applyBalance(tx);
+                r.nextDate = Utils.addMonths(r.nextDate, parseInt(r.freq) || 1); changed = true; safety++;
             }
-        });
-        if(changed) this.save();
+        }); if(changed) this.save();
+    },
+    applyTheme() { document.body.setAttribute('data-theme', this.data.settings.theme); }
+};
+
+/* === DATA MANAGER (FIXED) === */
+const DataMgr = {
+    exportData() {
+        try {
+            // 1. Crea il contenuto JSON
+            const dataStr = JSON.stringify(Store.data, null, 2);
+            // 2. Crea un Blob (File virtuale) - Più sicuro su Mobile
+            const blob = new Blob([dataStr], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            
+            // 3. Crea link nascosto e cliccalo
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `LUMO_Backup_${Utils.today()}.json`;
+            document.body.appendChild(a);
+            a.click();
+            
+            // 4. Pulizia
+            setTimeout(() => {
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+            }, 100);
+            
+        } catch (e) {
+            alert("Errore durante il backup: " + e.message);
+        }
     },
 
-    applyTheme() { document.body.setAttribute('data-theme', this.data.settings.theme); }
+    importData() {
+        document.getElementById('import-file').click();
+    },
+
+    handleFile(input) {
+        const file = input.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const json = JSON.parse(e.target.result);
+                // Controllo validità base
+                if (json.accounts && json.transactions) {
+                    if(confirm("Attenzione: Questo sovrascriverà tutti i dati attuali con quelli del backup. Continuare?")) {
+                        Store.data = json;
+                        Store.save();
+                        alert("Backup ripristinato con successo!");
+                        location.reload();
+                    }
+                } else {
+                    alert("Il file selezionato non è un backup valido di LUMO.");
+                }
+            } catch (err) {
+                alert("Errore nella lettura del file: " + err.message);
+            }
+        };
+        reader.readAsText(file);
+        // Reset input per permettere di ricaricare lo stesso file se serve
+        input.value = ''; 
+    }
 };
 
 /* === UI === */
@@ -131,7 +130,6 @@ const UI = {
     },
 
     drawDash() {
-        // Mostra solo liquidità
         const liquidAccounts = Store.data.accounts.filter(a => a.type !== 'savings');
         const total = liquidAccounts.reduce((s,a) => s + a.balance, 0);
         const stats = this.calcStats();
@@ -197,41 +195,19 @@ const UI = {
         document.getElementById('main-content').innerHTML = h;
     },
 
-    /* -- LOGICA COLORI CORRETTA -- */
     drawRecurring() {
         const tot = Store.data.recurring.reduce((s, r) => r.active && r.type==='expense' ? s + parseFloat(r.amount) : s, 0);
         let h = `<div class="card" style="text-align:center; padding:25px; margin-bottom:50px;"><p style="opacity:0.6; font-size:0.9rem; margin-bottom:10px">Gestisci le spese automatiche</p><button class="btn-primary" onclick="UI.modalRecurring()" style="width:auto; padding:10px 25px">＋ Aggiungi Nuova</button></div>`;
-        
         if(Store.data.recurring.length > 0) {
             h += `<div style="padding-bottom:80px">`; 
             const sorted = [...Store.data.recurring].sort((a,b) => new Date(a.nextDate) - new Date(b.nextDate));
             const today = new Date();
-            // Ottengo solo Anno e Mese correnti per il confronto
-            const curMonth = today.getMonth(); 
-            const curYear = today.getFullYear();
-
+            const curM = today.getMonth(); const curY = today.getFullYear();
             sorted.forEach(r => {
                 const nd = new Date(r.nextDate);
-                const ndMonth = nd.getMonth();
-                const ndYear = nd.getFullYear();
-                
-                // LOGICA:
-                // Se la data visualizzata è STESSO MESE E ANNO di oggi -> È Gialla (deve ancora scadere)
-                // Se la data visualizzata è MESE PROSSIMO (o anno prossimo) -> È Verde (è già stata pagata questo mese)
-                
-                let isCurrentMonth = (ndMonth === curMonth && ndYear === curYear);
-                
-                let cssClass = '';
-                let status = '';
-
-                if (isCurrentMonth) {
-                    cssClass = 'rec-card rec-yellow';
-                    status = `⏳ In arrivo: ${Utils.fmtDate(r.nextDate)}`;
-                } else {
-                    cssClass = 'rec-card rec-green';
-                    status = `✓ Addebitata (Prox: ${Utils.fmtDate(r.nextDate)})`;
-                }
-
+                const isCurrentMonth = (nd.getMonth() === curM && nd.getFullYear() === curY);
+                let cssClass = isCurrentMonth ? 'rec-card rec-yellow' : 'rec-card rec-green';
+                let status = isCurrentMonth ? `⏳ In arrivo: ${Utils.fmtDate(r.nextDate)}` : `✓ Addebitata (Prox: ${Utils.fmtDate(r.nextDate)})`;
                 h += `<div class="${cssClass}" onclick="UI.modalRecurring('${r.id}')"><div><div style="font-weight:700; font-size:1.05rem">${r.desc}</div><span class="status-badge">${status}</span></div><div style="font-weight:800; font-size:1.15rem">${Utils.fmtMoney(r.amount)}</div></div>`;
             }); h += `</div>`;
         }
@@ -272,8 +248,6 @@ const UI = {
         this.openModal(id?'Modifica':'Nuovo', h);
     },
     saveAcc(id){ const n=document.getElementById('a-name').value; if(!n) return; const acc = id?Store.data.accounts.find(a=>a.id===id):{id:Utils.genId(), balance:parseFloat(document.getElementById('a-bal').value)}; acc.name=n; acc.type=document.getElementById('a-type').value; Store.saveAccount(acc); this.closeModal(); Router.refresh(); },
-    
-    // CHART CON PERCENTUALI
     calcStats() {
         const d=new Date(), m=d.getMonth(), y=d.getFullYear();
         const txs = Store.data.transactions.filter(t=>{const x=new Date(t.date); return x.getMonth()===m && x.getFullYear()===y});
@@ -285,14 +259,4 @@ const UI = {
         Chart.register(ChartDataLabels);
         window.myChart=new Chart(c,{type:'doughnut',data:{labels:Object.keys(d),datasets:[{data:Object.values(d),backgroundColor:['#0f766e','#f97316','#10b981','#06b6d4','#8b5cf6','#f43f5e','#64748b'],borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{boxWidth:10,font:{size:11}}},tooltip:{enabled:true},datalabels:{color:'#fff',font:{weight:'bold',size:11},formatter:(val,ctx)=>{let sum=0;let dataArr=ctx.chart.data.datasets[0].data;dataArr.map(data=>{sum+=data});let percentage=(val*100/sum).toFixed(0)+"%";return percentage;}}},cutout:'65%'}});
     },
-    modalSettings() { const theme = Store.data.settings.theme; const h=`<div class="card" style="margin-top:0"><button class="list-item" style="width:100%; border:none; background:none;" onclick="UI.modalCategories()"><div style="font-weight:600">🏷 Gestione Categorie</div><div>›</div></button><div class="list-item" style="cursor:default"><div style="font-weight:600">Tema Scuro</div><button onclick="UI.toggleTheme()" style="padding:8px 15px; border-radius:20px; border:1px solid var(--border); background:var(--bg-body)">${theme==='dark'?'ON':'OFF'}</button></div></div><div class="card"><h4>Dati & Sicurezza</h4><button class="btn-primary" style="background:#475569; margin-bottom:10px" onclick="DataMgr.exportData()">📤 Backup Dati</button><button class="btn-primary" style="background:#475569" onclick="DataMgr.importData()">📥 Ripristina Backup</button><input type="file" id="import-file" style="display:none" onchange="DataMgr.handleFile(this)"><p style="font-size:0.8rem; color:var(--text-muted); margin-top:15px; text-align:center;">LUMO v4.2</p></div>`; this.openModal('Impostazioni', h); },
-    toggleTheme() { Store.data.settings.theme = Store.data.settings.theme==='light'?'dark':'light'; Store.applyTheme(); Store.save(); this.modalSettings(); },
-    modalCategories() { let h=`<div class="form-group" style="display:flex; gap:10px;"><input type="text" id="new-cat" placeholder="Nuova..."><button class="btn-primary" style="width:auto; margin:0;" onclick="UI.addCat()">+</button></div><div class="cat-list">`; Store.data.categories.forEach(c=>{h+=`<div class="cat-item"><span contenteditable="true" onblur="UI.editCat('${c}',this.innerText)">${c}</span><div class="cat-actions"><button style="color:var(--text-muted)">✏️</button><button style="color:var(--danger)" onclick="if(confirm('Eliminare?'))UI.delCat('${c}')">🗑</button></div></div>`}); h+='</div>'; this.openModal('Categorie', h); },
-    addCat() { const v=document.getElementById('new-cat').value.trim(); if(v){Store.addCategory(v);this.modalCategories()} },
-    editCat(o,n) { if(n&&n!==o)Store.updateCategory(o,n) },
-    delCat(n) { Store.deleteCategory(n);this.modalCategories() }
-};
-
-const Router={page:'dashboard',navigate(p){this.page=p;document.querySelectorAll('.nav-item').forEach(e=>e.classList.remove('active'));document.querySelectorAll(`.nav-item[onclick*="${p}"]`).forEach(e=>e.classList.add('active'));UI.render()},refresh(){this.navigate(this.page)}};
-const Auth={input:'',addPin(n){if(this.input.length<6){this.input+=n;this.render()}},clearPin(){this.input='';this.render()},render(){document.getElementById('pin-display').innerHTML=Array(this.input.length).fill('<div class="pin-dot filled"></div>').join('')},checkPin(){if(!Store.data.pin){if(this.input.length>=4){Store.data.pin=this.input;Store.save();this.unlock()}else alert('Min 4 cifre')}else{if(this.input===Store.data.pin)this.unlock();else{document.getElementById('auth-msg').innerText='PIN Errato';this.clearPin()}}},unlock(){document.getElementById('auth-screen').classList.remove('active');document.getElementById('app-screen').classList.add('active');Router.refresh()}};
-window.onload=()=>{Store.init();Auth.input='';Auth.render();document.getElementById('fab-add').addEventListener('click',()=>UI.modalTx())};
+    modalSettings() { const theme = Store.data.settings.theme; const h=`<div class="card" style="margin-top:0"><button class="list-item" style="width:100%; border:none; background:none;" onclick="UI.modalCategories()"><div style="font-weight:600">🏷 Gestione Categorie</div><div>›</div></button><div class="list-item" style="cursor:default"><div style="font-weight:600">Tema Scuro</div><button

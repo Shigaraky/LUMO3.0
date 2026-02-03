@@ -1,5 +1,5 @@
 // AGGIORNATO A VERSIONE 4.0
-const CACHE_NAME = 'lumo-v4.2'; 
+const CACHE_NAME = 'lumo-v4.3'; 
 
 const ASSETS = [
     './',
